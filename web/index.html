@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>比特币行情助手</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0d1117;
+      --card: #161b22;
+      --accent: #f2a900;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --danger: #ff6b6b;
+      --success: #3ecf8e;
+    }
+    body {
+      margin: 0;
+      font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #0b1120 35%, #111827 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 24px;
+      width: min(960px, 100%);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 12px;
+      font-size: 26px;
+    }
+    .badge {
+      background: rgba(242,169,0,0.15);
+      color: var(--accent);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin: 16px 0 8px;
+    }
+    .metric {
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+    .label {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .value {
+      font-size: 20px;
+      font-weight: 600;
+    }
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 2px;
+    }
+    .recommendation {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 12px;
+      background: linear-gradient(90deg, rgba(62,207,142,0.15), rgba(15,23,42,0));
+      border: 1px solid rgba(62,207,142,0.5);
+    }
+    .recommendation.danger { background: linear-gradient(90deg, rgba(255,107,107,0.18), rgba(15,23,42,0)); border-color: rgba(255,107,107,0.5);}    
+    .recommendation.neutral { background: linear-gradient(90deg, rgba(242,169,0,0.15), rgba(15,23,42,0)); border-color: rgba(242,169,0,0.45);}    
+    ul { margin: 8px 0 0 18px; padding: 0; }
+    button {
+      background: var(--accent);
+      color: #111827;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+    button:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(0,0,0,0.25);}    
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .status { font-size: 13px; color: var(--muted); }
+    .error { color: var(--danger); }
+    footer { margin-top: 14px; font-size: 12px; color: var(--muted); text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row">
+      <h1>比特币行情助手 <span class="badge">实时</span></h1>
+      <button id="refresh">立即刷新</button>
+    </div>
+    <div class="status" id="status">等待获取数据…</div>
+    <div class="metrics" id="metrics" hidden></div>
+    <div class="recommendation" id="recommendation" hidden>
+      <div class="label">操作建议</div>
+      <div class="value" id="action">—</div>
+      <ul id="reasons"></ul>
+    </div>
+    <footer>数据来源：CoinGecko 公共 API</footer>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const metricsEl = document.getElementById('metrics');
+    const recEl = document.getElementById('recommendation');
+    const actionEl = document.getElementById('action');
+    const reasonsEl = document.getElementById('reasons');
+    const refreshBtn = document.getElementById('refresh');
+
+    function formatUSD(num) {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(num);
+    }
+
+    function formatChange(num) {
+      const sign = num >= 0 ? '+' : '';
+      return `${sign}${num.toFixed(2)}%`;
+    }
+
+    function renderMetrics(record) {
+      const fields = [
+        { label: '最新价格', value: formatUSD(record.current_price) },
+        { label: '24h 最高 / 最低', value: `${formatUSD(record.high_24h)} / ${formatUSD(record.low_24h)}` },
+        { label: '市值', value: formatUSD(record.market_cap) },
+        { label: '24h 成交额', value: formatUSD(record.total_volume) },
+        { label: '1 小时涨跌幅', value: formatChange(record.price_change_percentage_1h_in_currency) },
+        { label: '24 小时涨跌幅', value: formatChange(record.price_change_percentage_24h_in_currency) },
+        { label: '7 天涨跌幅', value: formatChange(record.price_change_percentage_7d_in_currency) },
+        { label: '更新时间', value: new Date().toLocaleString() },
+      ];
+      metricsEl.innerHTML = fields.map(({ label, value }) => `
+        <div class="metric">
+          <div class="label">${label}</div>
+          <div class="value">${value}</div>
+        </div>
+      `).join('');
+      metricsEl.hidden = false;
+    }
+
+    function summarizeTrend(record) {
+      const oneHour = Number(record.price_change_percentage_1h_in_currency || 0);
+      const day = Number(record.price_change_percentage_24h_in_currency || 0);
+      const week = Number(record.price_change_percentage_7d_in_currency || 0);
+
+      const reasons = [
+        `1 小时变化：${formatChange(oneHour)}`,
+        `24 小时变化：${formatChange(day)}`,
+        `7 天变化：${formatChange(week)}`,
+      ];
+
+      let action = '观望 / 持有';
+      let tone = 'neutral';
+
+      if (oneHour > 0.25 && day > 0.5) {
+        action = '可考虑买入';
+        tone = 'success';
+        reasons.push('多重时间框架显示正向动能');
+      } else if (oneHour < -0.25 && day < -0.5) {
+        action = '可考虑减仓';
+        tone = 'danger';
+        reasons.push('短期与日线均出现下行压力');
+      } else {
+        reasons.push('信号分化，等待更明确方向更稳妥');
+      }
+
+      if (week > 5) {
+        reasons.push('周线表现强劲，可能处于上升趋势');
+      } else if (week < -5) {
+        reasons.push('周线连续走弱，注意回撤风险');
+      }
+
+      return { action, tone, reasons };
+    }
+
+    function renderRecommendation(summary) {
+      actionEl.textContent = summary.action;
+      reasonsEl.innerHTML = summary.reasons.map(item => `<li>${item}</li>`).join('');
+      recEl.classList.remove('danger', 'success', 'neutral');
+      recEl.classList.add(summary.tone);
+      recEl.hidden = false;
+    }
+
+    async function fetchData() {
+      statusEl.textContent = '正在获取行情…';
+      statusEl.classList.remove('error');
+      try {
+        const resp = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin&price_change_percentage=1h,24h,7d');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (!data.length) throw new Error('未获得行情数据');
+        const record = data[0];
+        renderMetrics(record);
+        renderRecommendation(summarizeTrend(record));
+        statusEl.textContent = '最新数据已更新';
+      } catch (err) {
+        statusEl.textContent = `获取数据失败：${err.message}`;
+        statusEl.classList.add('error');
+        metricsEl.hidden = true;
+        recEl.hidden = true;
+      }
+    }
+
+    refreshBtn.addEventListener('click', fetchData);
+    fetchData();
+  </script>
+</body>
+</html>
